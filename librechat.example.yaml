@@ -234,7 +234,7 @@ endpoints:
           - 'llama2-70b-4096'
           - 'mixtral-8x7b-32768'
           - 'gemma-7b-it'
-        fetch: false
+        fetch: true
       titleConvo: true
       titleModel: 'mixtral-8x7b-32768'
       modelDisplayLabel: 'groq'
