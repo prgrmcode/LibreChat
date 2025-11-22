@@ -162,8 +162,19 @@ const messageSchema: Schema<IMessage> = new Schema(
   { timestamps: true },
 );
 
+// EXISTING INDEXES
 messageSchema.index({ expiredAt: 1 }, { expireAfterSeconds: 0 });
 messageSchema.index({ createdAt: 1 });
 messageSchema.index({ messageId: 1, user: 1 }, { unique: true });
+
+// NEW: Add automatic TTL index for privacy compliance (30 days)
+messageSchema.index(
+  { createdAt: 1 }, 
+  { 
+    expireAfterSeconds: 2592000, // 30 days
+    name: 'createdAt_ttl_30days'
+  }
+);
+
 
 export default messageSchema;
