@@ -1,6 +1,7 @@
 import { Schema } from 'mongoose';
 import { conversationPreset } from './defaults';
 import { IConversation } from '~/types';
+import { encrypt, decrypt, isEncrypted } from '../utils/encryption';
 
 const convoSchema: Schema<IConversation> = new Schema(
   {
@@ -43,6 +44,59 @@ const convoSchema: Schema<IConversation> = new Schema(
   },
   { timestamps: true },
 );
+
+// Encrypt title before saving (optional - only if titles contain sensitive info)
+convoSchema.pre('save', function (next) {
+  const encryptionKey = process.env.ENCRYPTION_KEY;
+  
+  if (!encryptionKey || !this.title || this.title === 'New Chat') {
+    return next();
+  }
+  
+  try {
+    if (!isEncrypted(this.title)) {
+      this.title = encrypt(this.title, encryptionKey);
+    }
+    next();
+  } catch (error) {
+    next(error as Error);
+  }
+});
+
+// Decrypt title after retrieval
+convoSchema.post('find', function (docs: IConversation[]) {
+  const encryptionKey = process.env.ENCRYPTION_KEY;
+  
+  if (!encryptionKey || !docs || docs.length === 0) {
+    return;
+  }
+  
+  docs.forEach((doc) => {
+    try {
+      if (doc.title && isEncrypted(doc.title)) {
+        doc.title = decrypt(doc.title, encryptionKey);
+      }
+    } catch (error) {
+      console.error('Error decrypting conversation title:', error);
+    }
+  });
+});
+
+convoSchema.post('findOne', function (doc: IConversation | null) {
+  const encryptionKey = process.env.ENCRYPTION_KEY;
+  
+  if (!encryptionKey || !doc || !doc.title) {
+    return;
+  }
+  
+  try {
+    if (isEncrypted(doc.title)) {
+      doc.title = decrypt(doc.title, encryptionKey);
+    }
+  } catch (error) {
+    console.error('Error decrypting conversation title:', error);
+  }
+});
 
 // convoSchema.index({ expiredAt: 1 }, { expireAfterSeconds: 0 });
 // OPTION 2: Keep it for temporary chats but with shorter TTL
