@@ -1,5 +1,6 @@
 import mongoose, { Schema } from 'mongoose';
 import type { IMessage } from '~/types/message';
+import { encrypt, decrypt, isEncrypted } from '../utils/encryption';
 
 const messageSchema: Schema<IMessage> = new Schema(
   {
@@ -162,6 +163,76 @@ const messageSchema: Schema<IMessage> = new Schema(
   },
   { timestamps: true },
 );
+
+// Encrypt sensitive fields before saving
+messageSchema.pre('save', function (next) {
+  const encryptionKey = process.env.ENCRYPTION_KEY;
+  
+  if (!encryptionKey) {
+    console.warn('ENCRYPTION_KEY not set - messages will not be encrypted');
+    return next();
+  }
+  
+  try {
+    // Encrypt text field if it exists and is not already encrypted
+    if (this.text && !isEncrypted(this.text)) {
+      this.text = encrypt(this.text, encryptionKey);
+    }
+    
+    // Encrypt summary field if it exists
+    if (this.summary && !isEncrypted(this.summary)) {
+      this.summary = encrypt(this.summary, encryptionKey);
+    }
+    
+    next();
+  } catch (error) {
+    next(error as Error);
+  }
+});
+
+// Decrypt fields after retrieving from database
+messageSchema.post('find', function (docs: IMessage[]) {
+  const encryptionKey = process.env.ENCRYPTION_KEY;
+  
+  if (!encryptionKey || !docs || docs.length === 0) {
+    return;
+  }
+  
+  docs.forEach((doc) => {
+    try {
+      if (doc.text && isEncrypted(doc.text)) {
+        doc.text = decrypt(doc.text, encryptionKey);
+      }
+      
+      if (doc.summary && isEncrypted(doc.summary)) {
+        doc.summary = decrypt(doc.summary, encryptionKey);
+      }
+    } catch (error) {
+      console.error('Error decrypting message:', error);
+    }
+  });
+});
+
+// Decrypt fields after findOne
+messageSchema.post('findOne', function (doc: IMessage | null) {
+  const encryptionKey = process.env.ENCRYPTION_KEY;
+  
+  if (!encryptionKey || !doc) {
+    return;
+  }
+  
+  try {
+    if (doc.text && isEncrypted(doc.text)) {
+      doc.text = decrypt(doc.text, encryptionKey);
+    }
+    
+    if (doc.summary && isEncrypted(doc.summary)) {
+      doc.summary = decrypt(doc.summary, encryptionKey);
+    }
+  } catch (error) {
+    console.error('Error decrypting message:', error);
+  }
+});
 
 // EXISTING INDEXES
 // messageSchema.index({ expiredAt: 1 }, { expireAfterSeconds: 0 });
