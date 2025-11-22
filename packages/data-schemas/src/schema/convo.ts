@@ -48,4 +48,13 @@ convoSchema.index({ expiredAt: 1 }, { expireAfterSeconds: 0 });
 convoSchema.index({ createdAt: 1, updatedAt: 1 });
 convoSchema.index({ conversationId: 1, user: 1 }, { unique: true });
 
+// NEW: Add automatic TTL index for privacy compliance (30 days)
+convoSchema.index(
+  { createdAt: 1 }, 
+  { 
+    expireAfterSeconds: 2592000, // 30 days
+    name: 'createdAt_ttl_30days'
+  }
+);
+
 export default convoSchema;
