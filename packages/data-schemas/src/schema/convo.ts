@@ -44,8 +44,17 @@ const convoSchema: Schema<IConversation> = new Schema(
   { timestamps: true },
 );
 
-convoSchema.index({ expiredAt: 1 }, { expireAfterSeconds: 0 });
-convoSchema.index({ createdAt: 1, updatedAt: 1 });
+// convoSchema.index({ expiredAt: 1 }, { expireAfterSeconds: 0 });
+// OPTION 2: Keep it for temporary chats but with shorter TTL
+convoSchema.index(
+  { expiredAt: 1 }, 
+  { 
+    expireAfterSeconds: 3600, // 1 hour for temporary chats
+    name: 'expiredAt_temp_1hour',
+    partialFilterExpression: { expiredAt: { $exists: true, $ne: null } }
+  }
+);
+// convoSchema.index({ createdAt: 1, updatedAt: 1 });
 convoSchema.index({ conversationId: 1, user: 1 }, { unique: true });
 
 // NEW: Add automatic TTL index for privacy compliance (30 days)
@@ -56,5 +65,8 @@ convoSchema.index(
     name: 'createdAt_ttl_30days'
   }
 );
+
+// ADD SEPARATE INDEX FOR updatedAt:
+convoSchema.index({ updatedAt: 1 });
 
 export default convoSchema;
