@@ -164,8 +164,17 @@ const messageSchema: Schema<IMessage> = new Schema(
 );
 
 // EXISTING INDEXES
-messageSchema.index({ expiredAt: 1 }, { expireAfterSeconds: 0 });
-messageSchema.index({ createdAt: 1 });
+// messageSchema.index({ expiredAt: 1 }, { expireAfterSeconds: 0 });
+// Keep it for temporary chats but with shorter TTL
+messageSchema.index(
+  { expiredAt: 1 }, 
+  { 
+    expireAfterSeconds: 3600, // 1 hour for temporary chats
+    name: 'expiredAt_temp_1hour',
+    partialFilterExpression: { expiredAt: { $exists: true, $ne: null } }
+  }
+);
+// messageSchema.index({ createdAt: 1 });
 messageSchema.index({ messageId: 1, user: 1 }, { unique: true });
 
 // NEW: Add automatic TTL index for privacy compliance (30 days)
