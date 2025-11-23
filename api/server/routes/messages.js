@@ -16,9 +16,39 @@ const { cleanUpPrimaryKeyValue } = require('~/lib/utils/misc');
 const { getConvosQueried } = require('~/models/Conversation');
 const { countTokens } = require('~/server/utils');
 const { Message } = require('~/db/models');
+const { decrypt, isEncrypted } = require('@librechat/data-schemas/utils/encryption');
+
+logger.info('🔐 ENCRYPTION_KEY is set:', !!process.env.ENCRYPTION_KEY);
+if (process.env.ENCRYPTION_KEY) {
+  logger.info('🔐 ENCRYPTION_KEY length:', process.env.ENCRYPTION_KEY.length);
+}
 
 const router = express.Router();
 router.use(requireJwtAuth);
+
+/**
+ * Helper function to decrypt message fields
+ */
+function decryptMessageFields(message) {
+  if (!message) return message;
+
+  const encryptionKey = process.env.ENCRYPTION_KEY;
+  if (!encryptionKey) return message;
+
+  try {
+    if (message.text && isEncrypted(message.text)) {
+      message.text = decrypt(message.text, encryptionKey);
+    }
+
+    if (message.summary && isEncrypted(message.summary)) {
+      message.summary = decrypt(message.summary, encryptionKey);
+    }
+  } catch (error) {
+    logger.error('Error decrypting message in route:', error);
+  }
+
+  return message;
+}
 
 router.get('/', async (req, res) => {
   try {
@@ -46,7 +76,10 @@ router.get('/', async (req, res) => {
         messageId,
         user: user,
       }).lean();
-      response = { messages: message ? [message] : [], nextCursor: null };
+
+      // DECRYPT THE MESSAGE BEFORE RETURNING
+      const decryptedMessage = message ? decryptMessageFields(message) : null;
+      response = { messages: decryptedMessage ? [decryptedMessage] : [], nextCursor: null };
     } else if (conversationId) {
       const filter = { conversationId, user: user };
       if (cursor) {
@@ -56,8 +89,15 @@ router.get('/', async (req, res) => {
         .sort({ [sortField]: sortOrder })
         .limit(pageSize + 1)
         .lean();
-      const nextCursor = messages.length > pageSize ? messages.pop()[sortField] : null;
-      response = { messages, nextCursor };
+
+      // DECRYPT ALL MESSAGES BEFORE RETURNING
+      const decryptedMessages = messages.map(decryptMessageFields);
+      const nextCursor = decryptedMessages.length > pageSize
+        ? decryptedMessages.pop()[sortField]
+        : null;
+      response = { messages: decryptedMessages, nextCursor };
+      // const nextCursor = messages.length > pageSize ? messages.pop()[sortField] : null;
+      // response = { messages, nextCursor };
     } else if (search) {
       const searchResults = await Message.meiliSearch(search, { filter: `user = "${user}"` }, true);
 
