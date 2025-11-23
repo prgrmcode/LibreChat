@@ -86,5 +86,6 @@ export const isEncrypted = (data: string): boolean => {
   return parts.length === 4 && parts.every(part => /^[0-9a-f]+$/.test(part));
 };
 
-// CommonJS compatibility
+// CommonJS compatibility - CRITICAL for Node.js require()
+export default { encrypt, decrypt, isEncrypted };
 module.exports = { encrypt, decrypt, isEncrypted };

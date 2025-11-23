@@ -39,6 +39,8 @@ RUN \
 COPY --chown=node:node . .
 
 RUN \
+    # Build TypeScript packages BEFORE building client
+    npm run build:packages; \
     # React client build
     NODE_OPTIONS="--max-old-space-size=2048" npm run frontend; \
     npm prune --production; \
