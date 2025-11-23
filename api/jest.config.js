@@ -16,4 +16,22 @@ module.exports = {
     '^openid-client$': '<rootDir>/test/__mocks__/openid-client.js',
   },
   transformIgnorePatterns: ['/node_modules/(?!(openid-client|oauth4webapi|jose)/).*/'],
+
+  // Explicitly tell Jest where to find modules
+  moduleDirectories: ['node_modules', '<rootDir>'],
+  
+  // Ensure proper module resolution
+  testMatch: [
+    '**/__tests__/**/*.[jt]s?(x)',
+    '**/?(*.)+(spec|test).[jt]s?(x)',
+  ],
+  
+  collectCoverageFrom: [
+    '**/*.{js,jsx,ts,tsx}',
+    '!**/*.d.ts',
+    '!**/node_modules/**',
+    '!**/dist/**',
+    '!**/coverage/**',
+    '!**/__tests__/**',
+  ],
 };

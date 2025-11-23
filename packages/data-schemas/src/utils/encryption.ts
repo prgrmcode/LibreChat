@@ -88,4 +88,4 @@ export const isEncrypted = (data: string): boolean => {
 
 // CommonJS compatibility - CRITICAL for Node.js require()
 export default { encrypt, decrypt, isEncrypted };
-module.exports = { encrypt, decrypt, isEncrypted };
+// module.exports = { encrypt, decrypt, isEncrypted };

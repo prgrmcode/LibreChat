@@ -26,10 +26,13 @@ export default {
     // Automatically externalize peer dependencies
     peerDepsExternal(),
     // Resolve modules from node_modules
-    nodeResolve(),
+    nodeResolve({
+      preferBuiltins: true,
+      extensions: ['.ts', '.js'],
+    }),
     // Convert CommonJS modules to ES6
     commonjs({
-      ignoreDynamicRequires: true, // Ignore dynamic requires that might cause issues
+      transformMixedEsModules: true,
     }),
     // Compile TypeScript files and generate type declarations
     typescript({
@@ -41,7 +44,15 @@ export default {
   ],
   // Do not bundle these external dependencies
   external: [
+    'crypto',
     'mongoose',
-    'crypto', // Add crypto as external since it's a Node.js built-in
+    'winston',
+    'winston-daily-rotate-file',
+    'jsonwebtoken',
+    'klona',
+    'lodash',
+    'meilisearch',
+    'nanoid',
+    'librechat-data-provider',
   ],
 };
