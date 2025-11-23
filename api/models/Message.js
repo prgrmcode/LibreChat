@@ -4,6 +4,11 @@ const { createTempChatExpirationDate } = require('@librechat/api');
 const { Message } = require('~/db/models');
 const { decrypt, isEncrypted } = require('@librechat/data-schemas/utils/encryption');
 
+logger.info('🔐 ENCRYPTION_KEY is set:', !!process.env.ENCRYPTION_KEY);
+if (process.env.ENCRYPTION_KEY) {
+  logger.info('🔐 ENCRYPTION_KEY length:', process.env.ENCRYPTION_KEY.length);
+}
+
 const idSchema = z.string().uuid();
 
 /**
