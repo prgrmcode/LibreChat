@@ -1,7 +1,8 @@
 {
   "compilerOptions": {
     "target": "ES2019",
-    "module": "commonjs", // ← CHANGED from "ESNext"
+    "module": "ESNext",
+    // "module": "commonjs", // ← CHANGED from "ESNext"
     "moduleResolution": "node",
     "declaration": true,
     "declarationDir": "dist/types",
