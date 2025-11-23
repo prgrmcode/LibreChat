@@ -133,6 +133,7 @@ const messageSchema: Schema<IMessage> = new Schema(
     iconURL: {
       type: String,
     },
+    metadata: { type: mongoose.Schema.Types.Mixed },
     attachments: { type: [{ type: mongoose.Schema.Types.Mixed }], default: undefined },
     /*
     attachments: {
