@@ -2,8 +2,21 @@ const { z } = require('zod');
 const { logger } = require('@librechat/data-schemas');
 const { createTempChatExpirationDate } = require('@librechat/api');
 const { Message } = require('~/db/models');
-const { decrypt, isEncrypted } = require('@librechat/data-schemas/utils/encryption');
+// const { decrypt, isEncrypted } = require('@librechat/data-schemas/utils/encryption');
 
+// Import encryption functions properly
+let encrypt, decrypt, isEncrypted;
+try {
+  const encryptionModule = require('@librechat/data-schemas/utils/encryption');
+  encrypt = encryptionModule.encrypt;
+  decrypt = encryptionModule.decrypt;
+  isEncrypted = encryptionModule.isEncrypted;
+  logger.info('🔐 Encryption module loaded successfully');
+} catch (error) {
+  logger.error('❌ Failed to load encryption module:', error);
+}
+
+// Log encryption key status
 logger.info('🔐 ENCRYPTION_KEY is set:', !!process.env.ENCRYPTION_KEY);
 if (process.env.ENCRYPTION_KEY) {
   logger.info('🔐 ENCRYPTION_KEY length:', process.env.ENCRYPTION_KEY.length);
@@ -24,16 +37,50 @@ function decryptMessage(message) {
   try {
     if (message.text && isEncrypted(message.text)) {
       message.text = decrypt(message.text, encryptionKey);
+      logger.debug('✅ Decrypted message text');
     }
 
     if (message.summary && isEncrypted(message.summary)) {
       message.summary = decrypt(message.summary, encryptionKey);
+      logger.debug('✅ Decrypted message summary');
     }
   } catch (error) {
     logger.error('Error decrypting message:', error);
   }
 
   return message;
+}
+
+/**
+ * Encrypts message fields before saving
+ */
+function encryptMessage(messageData) {
+  if (!encrypt || !isEncrypted) {
+    logger.warn('⚠️  Encryption functions not available');
+    return messageData;
+  }
+
+  const encryptionKey = process.env.ENCRYPTION_KEY;
+  if (!encryptionKey) {
+    logger.warn('⚠️  ENCRYPTION_KEY not set - messages will NOT be encrypted');
+    return messageData;
+  }
+
+  try {
+    if (messageData.text && !isEncrypted(messageData.text)) {
+      messageData.text = encrypt(messageData.text, encryptionKey);
+      logger.debug('✅ Encrypted message text');
+    }
+
+    if (messageData.summary && !isEncrypted(messageData.summary)) {
+      messageData.summary = encrypt(messageData.summary, encryptionKey);
+      logger.debug('✅ Encrypted message summary');
+    }
+  } catch (error) {
+    logger.error('❌ Error encrypting message:', error);
+  }
+
+  return messageData;
 }
 
 /**
@@ -105,14 +152,19 @@ async function saveMessage(req, params, metadata) {
       logger.info(`---\`saveMessage\` context: ${metadata?.context}`);
       update.tokenCount = 0;
     }
+
+    // ENCRYPT MESSAGE BEFORE SAVING
+    const encryptedUpdate = encryptMessage({ ...update });
+
     const message = await Message.findOneAndUpdate(
       { messageId: params.messageId, user: req.user.id },
-      update,
+      encryptedUpdate,
       { upsert: true, new: true },
     );
 
-    // Decrypt before returning
-    return decryptMessage(message.toObject());
+    // DECRYPT MESSAGE BEFORE RETURNING
+    const decryptedMessage = message ? decryptMessage(message.toObject()) : null;
+    return decryptedMessage;
   } catch (err) {
     logger.error('Error saving message:', err);
     logger.info(`---\`saveMessage\` context: ${metadata?.context}`);
@@ -169,16 +221,33 @@ async function saveMessage(req, params, metadata) {
  */
 async function bulkSaveMessages(messages, overrideTimestamp = false) {
   try {
-    const bulkOps = messages.map((message) => ({
+    // const bulkOps = messages.map((message) => ({
+    //   updateOne: {
+    //     filter: { messageId: message.messageId },
+    //     update: message,
+    //     timestamps: !overrideTimestamp,
+    //     upsert: true,
+    //   },
+    // }));
+    // const result = await Message.bulkWrite(bulkOps);
+    // return result;
+
+    // ENCRYPT ALL MESSAGES BEFORE SAVING
+    const encryptedMessages = messages.map(msg => encryptMessage({ ...msg }));
+
+    const operations = encryptedMessages.map((message) => ({
       updateOne: {
-        filter: { messageId: message.messageId },
+        filter: { messageId: message.messageId, user: req.user.id },
         update: message,
         timestamps: !overrideTimestamp,
         upsert: true,
       },
     }));
-    const result = await Message.bulkWrite(bulkOps);
-    return result;
+
+    await Message.bulkWrite(operations);
+
+    // DECRYPT BEFORE RETURNING
+    return messages.map(msg => decryptMessage(msg));
   } catch (err) {
     logger.error('Error saving messages in bulk:', err);
     throw err;
@@ -243,7 +312,24 @@ async function recordMessage({
  */
 async function updateMessageText(req, { messageId, text }) {
   try {
-    await Message.updateOne({ messageId, user: req.user.id }, { text });
+    // ENCRYPT TEXT BEFORE UPDATING
+    const encryptedText = encrypt && isEncrypted && process.env.ENCRYPTION_KEY
+      ? encrypt(text, process.env.ENCRYPTION_KEY)
+      : text;
+
+    const message = await Message.findOneAndUpdate(
+      { messageId, user: req.user.id },
+      { text: encryptedText },
+      { new: true },
+    );
+
+    if (!message) {
+      throw new Error('Message not found or user not authorized.');
+    }
+
+    // await Message.updateOne({ messageId, user: req.user.id }, { text });
+    // DECRYPT BEFORE RETURNING
+    return decryptMessage(message.toObject());
   } catch (err) {
     logger.error('Error updating message text:', err);
     throw err;
@@ -271,9 +357,13 @@ async function updateMessageText(req, { messageId, text }) {
 async function updateMessage(req, message, metadata) {
   try {
     const { messageId, ...update } = message;
+
+    // ENCRYPT UPDATE DATA
+    const encryptedUpdate = encryptMessage({ ...update });
+
     const updatedMessage = await Message.findOneAndUpdate(
       { messageId, user: req.user.id },
-      update,
+      encryptedUpdate,
       {
         new: true,
       },
