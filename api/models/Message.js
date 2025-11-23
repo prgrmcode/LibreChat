@@ -2,8 +2,34 @@ const { z } = require('zod');
 const { logger } = require('@librechat/data-schemas');
 const { createTempChatExpirationDate } = require('@librechat/api');
 const { Message } = require('~/db/models');
+const { decrypt, isEncrypted } = require('@librechat/data-schemas/utils/encryption');
 
 const idSchema = z.string().uuid();
+
+/**
+ * Decrypts message fields if encrypted
+ */
+function decryptMessage(message) {
+  const encryptionKey = process.env.ENCRYPTION_KEY;
+
+  if (!encryptionKey || !message) {
+    return message;
+  }
+
+  try {
+    if (message.text && isEncrypted(message.text)) {
+      message.text = decrypt(message.text, encryptionKey);
+    }
+
+    if (message.summary && isEncrypted(message.summary)) {
+      message.summary = decrypt(message.summary, encryptionKey);
+    }
+  } catch (error) {
+    logger.error('Error decrypting message:', error);
+  }
+
+  return message;
+}
 
 /**
  * Saves a message in the database.
@@ -80,7 +106,8 @@ async function saveMessage(req, params, metadata) {
       { upsert: true, new: true },
     );
 
-    return message.toObject();
+    // Decrypt before returning
+    return decryptMessage(message.toObject());
   } catch (err) {
     logger.error('Error saving message:', err);
     logger.info(`---\`saveMessage\` context: ${metadata?.context}`);
@@ -251,15 +278,18 @@ async function updateMessage(req, message, metadata) {
       throw new Error('Message not found or user not authorized.');
     }
 
+    // Decrypt before returning
+    const decrypted = decryptMessage(updatedMessage.toObject());
+
     return {
-      messageId: updatedMessage.messageId,
-      conversationId: updatedMessage.conversationId,
-      parentMessageId: updatedMessage.parentMessageId,
-      sender: updatedMessage.sender,
-      text: updatedMessage.text,
-      isCreatedByUser: updatedMessage.isCreatedByUser,
-      tokenCount: updatedMessage.tokenCount,
-      feedback: updatedMessage.feedback,
+      messageId: decrypted.messageId,
+      conversationId: decrypted.conversationId,
+      parentMessageId: decrypted.parentMessageId,
+      sender: decrypted.sender,
+      text: decrypted.text,
+      isCreatedByUser: decrypted.isCreatedByUser,
+      tokenCount: decrypted.tokenCount,
+      feedback: decrypted.feedback,
     };
   } catch (err) {
     logger.error('Error updating message:', err);
@@ -310,11 +340,20 @@ async function deleteMessagesSince(req, { messageId, conversationId }) {
  */
 async function getMessages(filter, select) {
   try {
+    let messages;
+
+    // if (select) {
+    //   return await Message.find(filter).select(select).sort({ createdAt: 1 }).lean();
+    // }
     if (select) {
-      return await Message.find(filter).select(select).sort({ createdAt: 1 }).lean();
+      messages = await Message.find(filter).select(select).sort({ createdAt: 1 }).lean();
+    } else {
+      messages = await Message.find(filter).sort({ createdAt: 1 }).lean();
     }
 
-    return await Message.find(filter).sort({ createdAt: 1 }).lean();
+    // return await Message.find(filter).sort({ createdAt: 1 }).lean();
+    // Decrypt all messages before returning
+    return messages.map(decryptMessage);
   } catch (err) {
     logger.error('Error getting messages:', err);
     throw err;
@@ -331,10 +370,17 @@ async function getMessages(filter, select) {
  */
 async function getMessage({ user, messageId }) {
   try {
-    return await Message.findOne({
+    // return await Message.findOne({
+    //   user,
+    //   messageId,
+    // }).lean();
+    const message = await Message.findOne({
       user,
       messageId,
     }).lean();
+
+    // Decrypt before returning
+    return decryptMessage(message);
   } catch (err) {
     logger.error('Error getting message:', err);
     throw err;

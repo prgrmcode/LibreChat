@@ -2,6 +2,38 @@ const { logger } = require('@librechat/data-schemas');
 const { createTempChatExpirationDate } = require('@librechat/api');
 const { getMessages, deleteMessages } = require('./Message');
 const { Conversation } = require('~/db/models');
+const { decrypt, isEncrypted } = require('@librechat/data-schemas/utils/encryption');
+
+/**
+ * Decrypts conversation fields if encrypted
+ */
+function decryptConversation(conversation) {
+  const encryptionKey = process.env.ENCRYPTION_KEY;
+
+  if (!encryptionKey || !conversation) {
+    return conversation;
+  }
+
+  try {
+    if (conversation.title && isEncrypted(conversation.title)) {
+      conversation.title = decrypt(conversation.title, encryptionKey);
+    }
+  } catch (error) {
+    logger.error('Error decrypting conversation:', error);
+  }
+
+  return conversation;
+}
+
+/**
+ * Decrypts an array of conversations
+ */
+function decryptConversations(conversations) {
+  if (!conversations || !Array.isArray(conversations)) {
+    return conversations;
+  }
+  return conversations.map(decryptConversation);
+}
 
 /**
  * Searches for a conversation by conversationId and returns a lean document with only conversationId and user.
@@ -25,7 +57,9 @@ const searchConversation = async (conversationId) => {
  */
 const getConvo = async (user, conversationId) => {
   try {
-    return await Conversation.findOne({ user, conversationId }).lean();
+    // return await Conversation.findOne({ user, conversationId }).lean();
+    const convo = await Conversation.findOne({ user, conversationId }).lean();
+    return decryptConversation(convo); // ADD DECRYPTION
   } catch (error) {
     logger.error('[getConvo] Error getting single conversation', error);
     return { message: 'Error getting single conversation' };
@@ -128,7 +162,9 @@ module.exports = {
         },
       );
 
-      return conversation.toObject();
+      // return conversation.toObject();
+      // Decrypt before returning
+      return decryptConversation(conversation.toObject());
     } catch (error) {
       logger.error('[saveConvo] Error saving conversation', error);
       if (metadata && metadata?.context) {
@@ -209,7 +245,9 @@ module.exports = {
         nextCursor = lastConvo.updatedAt.toISOString();
       }
 
-      return { conversations: convos, nextCursor };
+      // return { conversations: convos, nextCursor };
+      // DECRYPT ALL CONVERSATIONS BEFORE RETURNING
+      return { conversations: decryptConversations(convos), nextCursor };
     } catch (error) {
       logger.error('[getConvosByCursor] Error getting conversations', error);
       return { message: 'Error getting conversations' };
@@ -244,12 +282,15 @@ module.exports = {
         nextCursor = lastConvo.updatedAt.toISOString();
       }
 
+      // DECRYPT CONVERSATIONS
+      const decryptedLimited = decryptConversations(limited);
+
       const convoMap = {};
-      limited.forEach((convo) => {
+      decryptedLimited.forEach((convo) => {
         convoMap[convo.conversationId] = convo;
       });
 
-      return { conversations: limited, nextCursor, convoMap };
+      return { conversations: decryptedLimited, nextCursor, convoMap };
     } catch (error) {
       logger.error('[getConvosQueried] Error getting conversations', error);
       return { message: 'Error fetching conversations' };
@@ -259,7 +300,7 @@ module.exports = {
   /* chore: this method is not properly error handled */
   getConvoTitle: async (user, conversationId) => {
     try {
-      const convo = await getConvo(user, conversationId);
+      const convo = await getConvo(user, conversationId); // ✅ Already decrypted
       /* ChatGPT Browser was triggering error here due to convo being saved later */
       if (convo && !convo.title) {
         return null;

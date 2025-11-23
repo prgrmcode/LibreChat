@@ -166,79 +166,82 @@ const messageSchema: Schema<IMessage> = new Schema(
 // Encrypt sensitive fields before saving
 messageSchema.pre('save', function (next) {
   const encryptionKey = process.env.ENCRYPTION_KEY;
-  
+
   if (!encryptionKey) {
     console.warn('ENCRYPTION_KEY not set - messages will not be encrypted');
     return next();
   }
-  
+
   try {
     // Encrypt text field if it exists and is not already encrypted
     if (this.text && !isEncrypted(this.text)) {
       this.text = encrypt(this.text, encryptionKey);
     }
-    
+
     // Encrypt summary field if it exists
     if (this.summary && !isEncrypted(this.summary)) {
       this.summary = encrypt(this.summary, encryptionKey);
     }
-    
+
     next();
   } catch (error) {
     next(error as Error);
   }
 });
 
-// Decrypt fields after retrieving from database
-messageSchema.post('find', function (docs: IMessage[]) {
+// Helper function to decrypt a single document
+function decryptDocument(doc: any) {
   const encryptionKey = process.env.ENCRYPTION_KEY;
-  
-  if (!encryptionKey || !docs || docs.length === 0) {
-    return;
-  }
-  
-  docs.forEach((doc) => {
-    try {
-      if (doc.text && isEncrypted(doc.text)) {
-        doc.text = decrypt(doc.text, encryptionKey);
-      }
-      
-      if (doc.summary && isEncrypted(doc.summary)) {
-        doc.summary = decrypt(doc.summary, encryptionKey);
-      }
-    } catch (error) {
-      console.error('Error decrypting message:', error);
-    }
-  });
-});
 
-// Decrypt fields after findOne
-messageSchema.post('findOne', function (doc: IMessage | null) {
-  const encryptionKey = process.env.ENCRYPTION_KEY;
-  
   if (!encryptionKey || !doc) {
     return;
   }
-  
+
   try {
     if (doc.text && isEncrypted(doc.text)) {
       doc.text = decrypt(doc.text, encryptionKey);
     }
-    
+
     if (doc.summary && isEncrypted(doc.summary)) {
       doc.summary = decrypt(doc.summary, encryptionKey);
     }
   } catch (error) {
     console.error('Error decrypting message:', error);
   }
+}
+
+// Decrypt after find
+messageSchema.post('find', function (docs: IMessage[]) {
+  if (!docs || docs.length === 0) return;
+  docs.forEach(decryptDocument);
+});
+
+// Decrypt after findOne
+messageSchema.post('findOne', function (doc: IMessage | null) {
+  decryptDocument(doc);
+});
+
+// Decrypt after findOneAndUpdate (CRITICAL - this is what LibreChat uses most)
+messageSchema.post('findOneAndUpdate', function (doc: IMessage | null) {
+  decryptDocument(doc);
+});
+
+// Decrypt after updateOne
+messageSchema.post('updateOne', function (doc: IMessage | null) {
+  decryptDocument(doc);
+});
+
+// Decrypt after save
+messageSchema.post('save', function (doc: IMessage) {
+  decryptDocument(doc);
 });
 
 // EXISTING INDEXES
 // messageSchema.index({ expiredAt: 1 }, { expireAfterSeconds: 0 });
 // Keep it for temporary chats but with shorter TTL
 messageSchema.index(
-  { expiredAt: 1 }, 
-  { 
+  { expiredAt: 1 },
+  {
     expireAfterSeconds: 3600, // 1 hour for temporary chats
     name: 'expiredAt_temp_1hour',
     partialFilterExpression: { expiredAt: { $exists: true, $ne: null } }
@@ -249,8 +252,8 @@ messageSchema.index({ messageId: 1, user: 1 }, { unique: true });
 
 // NEW: Add automatic TTL index for privacy compliance (30 days)
 messageSchema.index(
-  { createdAt: 1 }, 
-  { 
+  { createdAt: 1 },
+  {
     expireAfterSeconds: 2592000, // 30 days
     name: 'createdAt_ttl_30days'
   }
