@@ -11,11 +11,13 @@ export default {
       file: 'dist/index.es.js',
       format: 'es',
       sourcemap: true,
+      exports: 'named',
     },
     {
       file: 'dist/index.cjs',
       format: 'cjs',
       sourcemap: true,
+      exports: 'named',
     },
   ],
   plugins: [
@@ -26,7 +28,9 @@ export default {
     // Resolve modules from node_modules
     nodeResolve(),
     // Convert CommonJS modules to ES6
-    commonjs(),
+    commonjs({
+      ignoreDynamicRequires: true, // Ignore dynamic requires that might cause issues
+    }),
     // Compile TypeScript files and generate type declarations
     typescript({
       tsconfig: './tsconfig.json',
@@ -36,5 +40,8 @@ export default {
     }),
   ],
   // Do not bundle these external dependencies
-  external: ['mongoose'],
+  external: [
+    'mongoose',
+    'crypto', // Add crypto as external since it's a Node.js built-in
+  ],
 };
