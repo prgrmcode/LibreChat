@@ -36,5 +36,8 @@ export default {
     }),
   ],
   // Do not bundle these external dependencies
-  external: ['mongoose'],
+  external: [
+    'mongoose',
+    'crypto', // Add crypto as external since it's a Node.js built-in
+  ],
 };
